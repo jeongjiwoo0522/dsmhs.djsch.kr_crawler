@@ -1,7 +1,5 @@
-const { promisify } = require("util");
 const axios = require("axios");
 const cheerio = require("cheerio");
-const { Client } = require("pg");
 
 const DSMHS_URL = `https://dsmhs.djsch.kr`;
 const GalleryURL = (boardSeq) => `https://dsmhs.djsch.kr/boardCnts/view.do?boardID=54803&boardSeq=${boardSeq}&lev=0&searchType=null&statusYN=N&page=1&pSize=undefined&s=dsmhs&m=0208&opType=N`;
