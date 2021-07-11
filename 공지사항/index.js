@@ -59,13 +59,21 @@ async function getNoticeContentMedia($boardTextContent) {
   }
 }
 
+async function getNoticeWriter($boardTextContent) {
+  return $boardTextContent(".infoBox li").html().replace(/<.+>/g, "").trim();
+}
+
 async function parseDsmhsKr() {
   const { data: pageHtml } = await axios.get(`${DSMHS_URL}${await getFistNoticePagePath()}`);
   const $boardTextContent = cheerio.load(cheerio.load(pageHtml)(".board-text").html());
-  const body = await getNoticeBody($boardTextContent);
-  const title = await getNoticeTitle($boardTextContent);
-  const media = await getNoticeContentMedia($boardTextContent);
-  return { title, body, media };
+  const result = {};
+  await Promise.all([
+    (async () => { result.body = await getNoticeBody($boardTextContent); })(),
+    (async () => { result.title = await getNoticeTitle($boardTextContent); })(),
+    (async () => { result.media = await getNoticeContentMedia($boardTextContent); })(),
+    (async () => { result.writer = await getNoticeWriter($boardTextContent); })()
+  ]);
+  return result;
 }
 
 parseDsmhsKr()
