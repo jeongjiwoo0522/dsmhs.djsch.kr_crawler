@@ -3,57 +3,69 @@ const cheerio = require("cheerio");
 
 const DSMHS_URL = `https://dsmhs.djsch.kr`;
 
-let noticeBody = "";
-
 function handleError(err) {
   console.error(err);
   process.exit(1);
 }
 
-function getNoticeTitle(domContent) {
+async function getFistNoticePagePath() {
+  const { data: pageHtml } = await axios.get(`${DSMHS_URL}/boardCnts/list.do?boardID=54793&m=0201&s=dsmhs`);
+  const $pageContent = cheerio.load(pageHtml);
+  const firstNoticePath = $pageContent("td.link").eq(1).children().attr().onclick.match(/[0-9]+/g)[1];
+  return `/boardCnts/view.do?boardID=54793&boardSeq=${firstNoticePath}&lev=0&searchType=null&statusYN=W&page=1&pSize=10&s=dsmhs&m=0202&opType=N`;
+}
+
+async function getNoticeBody($boardTextContent) {
   try {
-    return domContent.childNodes[4].childNodes[1].data;
+    let body = "";
+    const $viewBoxContentList = cheerio.load($boardTextContent.html())(".viewBox p");
+    const length = $viewBoxContentList.length;
+    for(let i=0; i<length; i++) {
+      body += $viewBoxContentList.eq(i).text() + "\n";
+    }
+    return body.trim();
   } catch(err) {
     handleError(err);
   }
 }
 
-function subStringNoticeBody(arr) {
-  if(!arr) { return; }
-  for(let a of arr) { a.data ? noticeBody = `${noticeBody}\n${a.data}` : subStringNoticeBody(a.children); }
+async function getNoticeTitle($boardTextContent) {
+  try {
+    const title = $boardTextContent("h1").eq(1).text().replace("제목", "");
+    return title.trim();
+  } catch(err) {
+    handleError(err);
+  }
 }
 
-function getNoticeContentMedia(domContent) {
+async function getNoticeContentMedia($boardTextContent) {
   try {
-    const media = [];
-    for(let i=1;; i+= 4) {
-      const medium = domContent.childNodes[8] ? domContent.childNodes[8].childNodes[1].childNodes[3].childNodes[i] : false;
-      if(!medium) break;
-      media.push(`${DSMHS_URL}${medium.attribs.href}`)
+    const $mediaContentList = $boardTextContent("dd a");
+    const mediaLength = $mediaContentList.length;
+    const mediaParsingData = [];
+    for(let i=0; i<mediaLength; i++) {
+      if($mediaContentList.eq(i).text()) {
+        const mediumContentName = $mediaContentList.eq(i).text();
+        const mediumReference = `${DSMHS_URL}${$mediaContentList.eq(i).attr().href}`;
+        mediaParsingData.push({
+          attach_name: mediumContentName,
+          file_name: mediumReference
+        });
+      }
     }
-    return media;
+    return mediaParsingData;
   } catch(err) {
     handleError(err);
   }
 }
 
 async function parseDsmhsKr() {
-  try {
-    const { data: pageHtml } = await axios.get(`${DSMHS_URL}/boardCnts/list.do?type=default&page=1&m=0201&s=dsmhs&boardID=54793`);
-    let $ = cheerio.load(pageHtml);
-    const boardSeq = $(".link")[3].childNodes[1].attribs.onclick.toString().match(/[0-9]+/g)[1];
-    const { data: noticeHtml } = await axios.get(`${DSMHS_URL}/boardCnts/view.do?boardID=54793&boardSeq=${boardSeq}&lev=0&searchType=null&statusYN=W&page=3&pSize=11&s=dsmhs&m=0201&opType=N`);
-    $ = cheerio.load(noticeHtml);
-    const boardText = $(".board-text")[0];
-    const title = getNoticeTitle(boardText);
-    subStringNoticeBody(boardText.childNodes[6].children);
-    const body = noticeBody;
-    noticeBody = "";
-    const attach = getNoticeContentMedia(boardText);
-    return { body, title, attach };
-  } catch(err) {
-    handleError(err);
-  }
+  const { data: pageHtml } = await axios.get(`${DSMHS_URL}${await getFistNoticePagePath()}`);
+  const $boardTextContent = cheerio.load(cheerio.load(pageHtml)(".board-text").html());
+  const body = await getNoticeBody($boardTextContent);
+  const title = await getNoticeTitle($boardTextContent);
+  const media = await getNoticeContentMedia($boardTextContent);
+  return { title, body, media };
 }
 
 parseDsmhsKr()
